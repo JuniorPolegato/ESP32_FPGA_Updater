@@ -1,0 +1,73 @@
+diff --git a/src/anlogic.cpp b/src/anlogic.cpp
+index 064397b..ba1a910 100644
+--- a/src/anlogic.cpp
++++ b/src/anlogic.cpp
+@@ -14,6 +14,7 @@
+ #include "display.hpp"
+ #include "progressBar.hpp"
+ #include "spiFlash.hpp"
++#include "rawParser.hpp"
+ 
+ #define REFRESH      0x01
+ #define IDCODE       0x06
+@@ -64,24 +65,34 @@ void Anlogic::program(unsigned int offset, bool unprotect_flash)
+ 	if (_mode == Device::NONE_MODE)
+ 		return;
+ 
+-	AnlogicBitParser bit(_filename, (_mode == Device::MEM_MODE), _verbose);
++	ConfigBitstreamParser *bit;
++	if (_file_extension == "bin" || _file_extension == "raw") {
++		if (_mode == Device::MEM_MODE) {
++			printError("raw/bin files are only supported for flash (-f)");
++			return;
++		}
++		bit = new RawParser(_filename, false);
++	} else {
++		bit = new AnlogicBitParser(_filename, (_mode == Device::MEM_MODE), _verbose);
++	}
+ 
+ 	printInfo("Parse file ", false);
+-	if (bit.parse() == EXIT_FAILURE) {
++	if (bit->parse() == EXIT_FAILURE) {
+ 		printError("FAIL");
++		delete bit;
+ 		return;
+ 	}
+-
+ 	printSuccess("DONE");
+ 
+ 	if (_verbose)
+-		bit.displayHeader();
++		bit->displayHeader();
+ 
+-	const uint8_t *data = bit.getData();
+-	int len = bit.getLength() / 8;
++	const uint8_t *data = bit->getData();
++	int len = bit->getLength() / 8;
+ 
+ 	if (_mode == Device::SPI_MODE) {
+ 		FlashInterface::write(offset, data, len, unprotect_flash);
++		delete bit;
+ 		return;
+ 	}
+ 
+@@ -137,6 +148,7 @@ void Anlogic::program(unsigned int offset, bool unprotect_flash)
+ 		_jtag->shiftIR(BYPASS, IRLENGTH);
+ 		_jtag->toggleClk(15);
+ 	}
++	delete bit;
+ }
+ 
+ uint32_t Anlogic::idCode()
+diff --git a/src/part.hpp b/src/part.hpp
+index b7d0781..482acfc 100644
+--- a/src/part.hpp
++++ b/src/part.hpp
+@@ -28,6 +28,7 @@ static std::map <uint32_t, fpga_model> fpga_list = {
+ 	{0x0a014c35, {"anlogic", "eagle s20", "EG4S20BG256", 8}},
+ 
+ 	/* Anlogic Elf2 */
++	{0x03004c37, {"anlogic", "elf2",      "EF2L45", 8}},
+ 	{0x00004c37, {"anlogic", "elf2",      "EF2M45", 8}},
+ 
+ 	/**************************************************************************/
